@@ -324,3 +324,24 @@ h1 {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4) !important;
 }
+
+.secondary-btn {
+    width: 100%;
+    background: var(--border);
+    color: var(--text-primary);
+    border: none;
+    padding: 0.875rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.secondary-btn:hover {
+    background: var(--text-secondary);
+    color: #000;
+}
+
+.secondary-btn:active {
+    transform: scale(0.98);
+}

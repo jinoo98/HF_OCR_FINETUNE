@@ -4,6 +4,7 @@ let currentIndex = 0;
 let hasUnsavedChanges = false;
 let currentScale = 1;
 let translateX = 0, translateY = 0;
+let isViewingOriginal = false;
 
 const fieldsToEdit = [
     { label: '상호명', keyIdx: 2 },
@@ -55,6 +56,27 @@ function updateProgress() {
     document.getElementById('progressFill').style.width = `${progressPercent}%`;
 }
 
+function renderFields() {
+    if (filteredData.length === 0) return;
+    const entry = filteredData[currentIndex];
+    const fieldsContainer = document.getElementById('fieldsList');
+    fieldsContainer.innerHTML = '';
+
+    fieldsToEdit.forEach(field => {
+        const textInfo = entry.text_info[field.keyIdx + 1];
+        const value = textInfo ? textInfo.text : '';
+
+        const group = document.createElement('div');
+        group.className = 'field-group';
+        group.innerHTML = `
+            <label>${field.label}</label>
+            <input type="text" value="${value}" data-idx="${field.keyIdx + 1}">
+        `;
+        group.querySelector('input').addEventListener('input', handleInputChange);
+        fieldsContainer.appendChild(group);
+    });
+}
+
 async function renderCurrent(noTransition = false) {
     if (filteredData.length === 0) {
         document.getElementById('receiptImage').src = '';
@@ -65,6 +87,9 @@ async function renderCurrent(noTransition = false) {
         return;
     }
     document.getElementById('saveBtn').style.display = 'block';
+
+    isViewingOriginal = false;
+    document.getElementById('yagiBtn').innerText = '원본';
 
     const imgElement = document.getElementById('receiptImage');
     const container = document.querySelector('.image-container');
@@ -95,25 +120,9 @@ async function renderCurrent(noTransition = false) {
         imgElement.onload = () => imgElement.classList.remove('fade');
     }
 
-    const fieldsContainer = document.getElementById('fieldsList');
-    fieldsContainer.innerHTML = '';
-
-    fieldsToEdit.forEach(field => {
-        const textInfo = entry.text_info[field.keyIdx + 1];
-        const value = textInfo ? textInfo.text : '';
-
-        const group = document.createElement('div');
-        group.className = 'field-group';
-        group.innerHTML = `
-            <label>${field.label}</label>
-            <input type="text" value="${value}" data-idx="${field.keyIdx + 1}">
-        `;
-        group.querySelector('input').addEventListener('input', handleInputChange);
-        fieldsContainer.appendChild(group);
-    });
+    renderFields();
 
     // Configure the button text depending on whether changes exist
-    const saveBtn = document.getElementById('saveBtn');
     if (hasUnsavedChanges) {
         saveBtn.innerText = 'Save Changes';
     } else {
@@ -212,6 +221,32 @@ async function navigate(direction) {
 document.getElementById('prevBtn').onclick = () => navigate('prev');
 document.getElementById('nextBtn').onclick = () => navigate('next');
 document.getElementById('saveBtn').onclick = saveChanges;
+document.getElementById('yagiBtn').onclick = () => {
+    if (filteredData.length === 0) return;
+    const entry = filteredData[currentIndex];
+
+    isViewingOriginal = !isViewingOriginal;
+    const yagiBtn = document.getElementById('yagiBtn');
+    const fieldsContainer = document.getElementById('fieldsList');
+
+    if (isViewingOriginal) {
+        yagiBtn.innerText = '데이터 수정';
+
+        const originalText = (entry.text_info && entry.text_info.length > 1) ? entry.text_info[1].text : '';
+        fieldsContainer.innerHTML = `<textarea id="originalTextarea" style="width: 100%; min-height: 200px; height: 100%; resize: none; font-size: 0.85rem; color: var(--text-primary); line-height: 1.4; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">${originalText}</textarea>`;
+
+        const textarea = document.getElementById('originalTextarea');
+        textarea.addEventListener('input', (e) => {
+            if (entry.text_info && entry.text_info.length > 1) {
+                entry.text_info[1].text = e.target.value;
+                handleInputChange();
+            }
+        });
+    } else {
+        yagiBtn.innerText = '원본';
+        renderFields();
+    }
+};
 
 document.getElementById('pageInput').addEventListener('change', async (e) => {
     let newIndex = parseInt(e.target.value, 10) - 1;
@@ -239,11 +274,7 @@ document.getElementById('pageInput').addEventListener('change', async (e) => {
 
 // Keyboard Shortcuts
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') {
-        navigate('prev');
-    } else if (e.key === 'ArrowRight') {
-        navigate('next');
-    } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         saveChanges();
     }
