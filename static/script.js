@@ -1,4 +1,5 @@
 let allData = [];
+let filteredData = [];
 let currentIndex = 0;
 let hasUnsavedChanges = false;
 let currentScale = 1;
@@ -15,6 +16,19 @@ async function fetchData() {
     try {
         const res = await fetch('/api/data');
         allData = await res.json();
+
+        filteredData = [];
+        allData.forEach((item, idx) => {
+            if (item.checked !== true) {
+                item._original_index = idx;
+                filteredData.push(item);
+            }
+        });
+
+        if (filteredData.length === 0) {
+            alert("모든 데이터 검수가 완료되었습니다!");
+        }
+
         renderCurrent(true); // Initial render no transition
     } catch (err) {
         console.error('Error fetching data:', err);
@@ -35,19 +49,31 @@ function updateProgress() {
     const total = allData.length;
     if (total === 0) return;
 
-    const completed = allData.filter(d => d.checked).length;
+    const completed = total - filteredData.length;
     const progressPercent = (completed / total) * 100;
 
     document.getElementById('progressFill').style.width = `${progressPercent}%`;
 }
 
 async function renderCurrent(noTransition = false) {
-    if (allData.length === 0) return;
+    if (filteredData.length === 0) {
+        document.getElementById('receiptImage').src = '';
+        document.getElementById('fieldsList').innerHTML = '<p style="color:var(--success);text-align:center;padding:2rem;font-weight:600;">모든 작업 완료!</p>';
+        document.getElementById('totalPages').innerText = ` / 0`;
+        document.getElementById('pageInput').value = 0;
+        document.getElementById('saveBtn').style.display = 'none';
+        return;
+    }
+    document.getElementById('saveBtn').style.display = 'block';
 
     const imgElement = document.getElementById('receiptImage');
     const container = document.querySelector('.image-container');
-    const entry = allData[currentIndex];
-    const imagePath = entry.image_info[0].image_url.replace('./images/', '/dataset/images/');
+    const entry = filteredData[currentIndex];
+
+    let imagePath = '';
+    if (entry.image_info && entry.image_info.length > 0) {
+        imagePath = entry.image_info[0].image_url.replace('./images/', '/dataset/images/');
+    }
 
     // Reset zoom on navigation
     currentScale = 1;
@@ -61,9 +87,9 @@ async function renderCurrent(noTransition = false) {
         await new Promise(r => setTimeout(r, 300));
     }
 
-    imgElement.src = imagePath;
+    if (imagePath) imgElement.src = imagePath;
     document.getElementById('pageInput').value = currentIndex + 1;
-    document.getElementById('totalPages').innerText = ` / ${allData.length}`;
+    document.getElementById('totalPages').innerText = ` / ${filteredData.length}`;
 
     if (!noTransition) {
         imgElement.onload = () => imgElement.classList.remove('fade');
@@ -105,13 +131,13 @@ async function renderCurrent(noTransition = false) {
 }
 
 async function saveChanges() {
-    if (allData.length === 0) return;
+    if (filteredData.length === 0) return;
 
     const status = document.getElementById('saveStatus');
     status.innerText = 'Saving...';
     status.classList.add('saving');
 
-    const entry = allData[currentIndex];
+    const entry = filteredData[currentIndex];
     const inputs = document.querySelectorAll('.fields-container input');
 
     inputs.forEach(input => {
@@ -129,7 +155,7 @@ async function saveChanges() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                index: currentIndex,
+                index: entry._original_index,
                 data: entry
             })
         });
@@ -144,7 +170,15 @@ async function saveChanges() {
             saveBtn.innerText = 'Confirm';
 
             hasUnsavedChanges = false;
+
+            // Remove from filtered queue and auto-navigate
+            filteredData.splice(currentIndex, 1);
+            if (currentIndex >= filteredData.length && filteredData.length > 0) {
+                currentIndex = filteredData.length - 1;
+            }
+
             updateProgress();
+            await renderCurrent();
         } else {
             alert('Error saving data');
             status.innerText = 'Error';
@@ -166,7 +200,7 @@ async function navigate(direction) {
         if (!confirm('You have unsaved changes. Discard and move?')) return;
     }
 
-    if (direction === 'next' && currentIndex < allData.length - 1) {
+    if (direction === 'next' && currentIndex < filteredData.length - 1) {
         currentIndex++;
         await renderCurrent();
     } else if (direction === 'prev' && currentIndex > 0) {
@@ -187,7 +221,7 @@ document.getElementById('pageInput').addEventListener('change', async (e) => {
     }
 
     if (newIndex < 0) newIndex = 0;
-    if (newIndex >= allData.length) newIndex = allData.length - 1;
+    if (newIndex >= filteredData.length) newIndex = filteredData.length - 1;
 
     if (newIndex !== currentIndex) {
         if (hasUnsavedChanges) {
