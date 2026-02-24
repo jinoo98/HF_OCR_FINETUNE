@@ -1,11 +1,16 @@
 import os
 import io
 import json
+import time
+from PIL import Image as PILImage
 from google.cloud import vision
 from google.protobuf.json_format import MessageToDict
+from dotenv import load_dotenv
+import concurrent.futures
+load_dotenv()
 
 # 1. 서비스 계정 인증 설정
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "ocr-key.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS").strip('"')
 
 # 2. Vision API 클라이언트 생성
 client = vision.ImageAnnotatorClient()
@@ -29,39 +34,55 @@ def process_ocr(image_path):
     
     return full_text
 
+def process_single_image(args):
+    img_path, filename = args
+    time.sleep(1)
+    try:
+        extracted_text = process_ocr(img_path)
+        data = {
+            "image_info": [
+                {"matched_text_index": 0, "image_url": f"./images/{filename}"}
+            ],
+            "text_info": [
+                {"text": "OCR:", "tag": "mask"},
+                {"text": extracted_text, "tag": "no_mask"}
+            ]
+        }
+        return data
+    except Exception as e:
+        print(f"Error processing {img_path}: {e}")
+        return None
+
 def main():
     image_dir = "dataset/images"
     output_dir = "dataset/jsonl"
-    
-    # 5개의 이미지 처리
-    target_images = ["1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg"]
-    
+
+    target_images = []
+    img_args_list = []
+
+    print(f"Scanning {image_dir} for images...")
+
     results = []
+
+    if os.path.exists(image_dir):
+        for filename in os.listdir(image_dir):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                img_path = os.path.join(image_dir, filename)
+                target_images.append(img_path)
+                img_args_list.append((img_path, filename))
+                
+    else:
+        print(f"Error: Directory {image_dir} not found.")
+        return
+
+    print(f"Found {len(target_images)} images. Processing in parallel...")
     
-    for img_name in target_images:
-        img_path = os.path.join(image_dir, img_name)
-        if not os.path.exists(img_path):
-            print(f"Warning: {img_path} not found.")
-            continue
-            
-        try:
-            extracted_text = process_ocr(img_path)
-            
-            # format.jsonl 형식을 참고하여 데이터 구성
-            # image_url은 dataset/images 기준 상대 경로 또는 요구된 형식에 따름
-            # 여기서는 ./images/파일명 형식으로 작성
-            data = {
-                "image_info": [
-                    {"matched_text_index": 0, "image_url": f"./images/{img_name}"}
-                ],
-                "text_info": [
-                    {"text": "OCR:", "tag": "mask"},
-                    {"text": extracted_text, "tag": "no_mask"}
-                ]
-            }
-            results.append(data)
-        except Exception as e:
-            print(f"Error processing {img_name}: {e}")
+    # 병렬 처리로 변경
+    # 구글 비전 API 호출 등 I/O 바운드 작업이므로 ThreadPoolExecutor를 사용합니다.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        for data in executor.map(process_single_image, img_args_list):
+            if data is not None:
+                results.append(data)
 
     # 결과 저장
     output_file = os.path.join(output_dir, "results.jsonl")

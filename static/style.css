@@ -34,7 +34,7 @@ body {
     padding: 1.5rem;
     gap: 1.5rem;
     background: radial-gradient(circle at top right, #1e1b4b, transparent),
-                radial-gradient(circle at bottom left, #0f172a, transparent);
+        radial-gradient(circle at bottom left, #0f172a, transparent);
 }
 
 header {
@@ -79,11 +79,41 @@ h1 {
     min-width: 120px;
 }
 
-#pageInfo {
+.page-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
     font-size: 0.875rem;
     font-weight: 600;
-    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
+}
+
+#pageInput {
+    width: 3rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    text-align: right;
+    border-radius: 4px;
+    font-family: inherit;
+    font-weight: 600;
+    padding: 2px 4px;
+    -moz-appearance: textfield;
+}
+
+#pageInput::-webkit-outer-spin-button,
+#pageInput::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#pageInput:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+#totalPages {
+    font-variant-numeric: tabular-nums;
 }
 
 .progress-bar {
@@ -161,11 +191,6 @@ h1 {
     overflow: hidden;
     padding: 1rem;
     position: relative;
-    cursor: zoom-in;
-}
-
-.image-container.zoomed {
-    cursor: zoom-out;
 }
 
 #receiptImage {
@@ -179,15 +204,6 @@ h1 {
 #receiptImage.fade {
     opacity: 0;
     transform: scale(0.95);
-}
-
-#receiptImage.zoomed {
-    transform: scale(2);
-    cursor: grab;
-}
-
-#receiptImage.zoomed:active {
-    cursor: grabbing;
 }
 
 .fields-container {

@@ -19,7 +19,10 @@
             <div class="controls">
                 <button id="prevBtn" class="nav-btn">← Previous</button>
                 <div class="progress-wrapper">
-                    <span id="pageInfo">1 / 5</span>
+                    <div class="page-indicator">
+                        <input type="number" id="pageInput" min="1" value="1" title="Go to page">
+                        <span id="totalPages"> / 5</span>
+                    </div>
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill"></div>
                     </div>

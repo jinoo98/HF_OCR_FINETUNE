@@ -2,3 +2,7 @@
 .omc
 .DS_Store
 ocr-key.json
+.env
+json/ordinal-case-*.json
+dataset/
+example/

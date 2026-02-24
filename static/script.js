@@ -1,7 +1,8 @@
 let allData = [];
 let currentIndex = 0;
 let hasUnsavedChanges = false;
-let isZoomed = false;
+let currentScale = 1;
+let translateX = 0, translateY = 0;
 
 const fieldsToEdit = [
     { label: '상호명', keyIdx: 2 },
@@ -24,7 +25,7 @@ function handleInputChange() {
     hasUnsavedChanges = true;
     document.getElementById('saveStatus').innerText = 'Unsaved Changes';
     document.getElementById('saveStatus').classList.add('saving');
-    
+
     const saveBtn = document.getElementById('saveBtn');
     saveBtn.classList.add('unsaved');
     saveBtn.innerText = 'Save Changes';
@@ -33,10 +34,10 @@ function handleInputChange() {
 function updateProgress() {
     const total = allData.length;
     if (total === 0) return;
-    
+
     const completed = allData.filter(d => d.checked).length;
     const progressPercent = (completed / total) * 100;
-    
+
     document.getElementById('progressFill').style.width = `${progressPercent}%`;
 }
 
@@ -47,12 +48,13 @@ async function renderCurrent(noTransition = false) {
     const container = document.querySelector('.image-container');
     const entry = allData[currentIndex];
     const imagePath = entry.image_info[0].image_url.replace('./images/', '/dataset/images/');
-    
+
     // Reset zoom on navigation
-    isZoomed = false;
-    imgElement.classList.remove('zoomed');
-    container.classList.remove('zoomed');
+    currentScale = 1;
+    translateX = 0;
+    translateY = 0;
     imgElement.style.transform = '';
+    imgElement.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
 
     if (!noTransition) {
         imgElement.classList.add('fade');
@@ -60,19 +62,20 @@ async function renderCurrent(noTransition = false) {
     }
 
     imgElement.src = imagePath;
-    document.getElementById('pageInfo').innerText = `${currentIndex + 1} / ${allData.length}`;
-    
+    document.getElementById('pageInput').value = currentIndex + 1;
+    document.getElementById('totalPages').innerText = ` / ${allData.length}`;
+
     if (!noTransition) {
         imgElement.onload = () => imgElement.classList.remove('fade');
     }
 
     const fieldsContainer = document.getElementById('fieldsList');
     fieldsContainer.innerHTML = '';
-    
+
     fieldsToEdit.forEach(field => {
         const textInfo = entry.text_info[field.keyIdx + 1];
         const value = textInfo ? textInfo.text : '';
-        
+
         const group = document.createElement('div');
         group.className = 'field-group';
         group.innerHTML = `
@@ -97,20 +100,20 @@ async function renderCurrent(noTransition = false) {
     status.classList.remove('saving');
     saveBtn.classList.remove('unsaved');
     hasUnsavedChanges = false;
-    
+
     updateProgress();
 }
 
 async function saveChanges() {
     if (allData.length === 0) return;
-    
+
     const status = document.getElementById('saveStatus');
     status.innerText = 'Saving...';
     status.classList.add('saving');
-    
+
     const entry = allData[currentIndex];
     const inputs = document.querySelectorAll('.fields-container input');
-    
+
     inputs.forEach(input => {
         const idx = parseInt(input.dataset.idx);
         if (entry.text_info[idx]) {
@@ -120,7 +123,7 @@ async function saveChanges() {
 
     // Auto-check this item on Confirm or Save
     entry.checked = true;
-    
+
     try {
         const res = await fetch('/api/save', {
             method: 'POST',
@@ -130,16 +133,16 @@ async function saveChanges() {
                 data: entry
             })
         });
-        
+
         if (res.ok) {
             showToast();
             status.innerText = 'Synced';
             status.classList.remove('saving');
-            
+
             const saveBtn = document.getElementById('saveBtn');
             saveBtn.classList.remove('unsaved');
             saveBtn.innerText = 'Confirm';
-            
+
             hasUnsavedChanges = false;
             updateProgress();
         } else {
@@ -162,7 +165,7 @@ async function navigate(direction) {
     if (hasUnsavedChanges) {
         if (!confirm('You have unsaved changes. Discard and move?')) return;
     }
-    
+
     if (direction === 'next' && currentIndex < allData.length - 1) {
         currentIndex++;
         await renderCurrent();
@@ -175,6 +178,30 @@ async function navigate(direction) {
 document.getElementById('prevBtn').onclick = () => navigate('prev');
 document.getElementById('nextBtn').onclick = () => navigate('next');
 document.getElementById('saveBtn').onclick = saveChanges;
+
+document.getElementById('pageInput').addEventListener('change', async (e) => {
+    let newIndex = parseInt(e.target.value, 10) - 1;
+    if (isNaN(newIndex)) {
+        e.target.value = currentIndex + 1;
+        return;
+    }
+
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex >= allData.length) newIndex = allData.length - 1;
+
+    if (newIndex !== currentIndex) {
+        if (hasUnsavedChanges) {
+            if (!confirm('You have unsaved changes. Discard and move?')) {
+                e.target.value = currentIndex + 1;
+                return;
+            }
+        }
+        currentIndex = newIndex;
+        await renderCurrent();
+    } else {
+        e.target.value = currentIndex + 1;
+    }
+});
 
 // Keyboard Shortcuts
 window.addEventListener('keydown', (e) => {
@@ -192,37 +219,59 @@ window.addEventListener('keydown', (e) => {
 const imgContainer = document.querySelector('.image-container');
 const receiptImg = document.getElementById('receiptImage');
 
-imgContainer.onclick = (e) => {
-    if (e.target === receiptImg || e.target === imgContainer) {
-        isZoomed = !isZoomed;
-        receiptImg.classList.toggle('zoomed', isZoomed);
-        imgContainer.classList.toggle('zoomed', isZoomed);
-        if (!isZoomed) {
-            receiptImg.style.transform = '';
-        }
-    }
-};
-
 let isDragging = false;
-let startX, startY, translateX = 0, translateY = 0;
+let startX, startY;
 
-imgContainer.onmousedown = (e) => {
-    if (!isZoomed) return;
+receiptImg.style.cursor = 'grab';
+
+function updateTransform() {
+    receiptImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${currentScale})`;
+}
+
+imgContainer.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomSensitivity = 0.15;
+    const delta = e.deltaY > 0 ? -1 : 1;
+    let newScale = currentScale + delta * zoomSensitivity;
+
+    // Limits
+    newScale = Math.max(0.1, Math.min(newScale, 15));
+
+    currentScale = newScale;
+    receiptImg.style.transition = 'transform 0.1s ease-out';
+    updateTransform();
+}, { passive: false });
+
+imgContainer.addEventListener('mousedown', (e) => {
     isDragging = true;
     startX = e.clientX - translateX;
     startY = e.clientY - translateY;
-};
+    receiptImg.style.cursor = 'grabbing';
+    receiptImg.style.transition = 'none'; // Remove transition for instant drag
+    e.preventDefault(); // Prevent default image dragging
+});
 
-window.onmousemove = (e) => {
-    if (!isDragging || !isZoomed) return;
+window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
     translateX = e.clientX - startX;
     translateY = e.clientY - startY;
-    receiptImg.style.transform = `scale(2) translate(${translateX/2}px, ${translateY/2}px)`;
-};
+    updateTransform();
+});
 
-window.onmouseup = () => {
-    isDragging = false;
-};
+window.addEventListener('mouseup', () => {
+    if (isDragging) {
+        isDragging = false;
+        receiptImg.style.cursor = 'grab';
+    }
+});
+
+imgContainer.addEventListener('dblclick', () => {
+    currentScale = 1;
+    translateX = 0;
+    translateY = 0;
+    receiptImg.style.transition = 'transform 0.3s ease';
+    updateTransform();
+});
 
 // Initial load
 fetchData();
